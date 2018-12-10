@@ -3,6 +3,8 @@
 
 using System;
 using System.Linq;
+using System.Reflection;
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Routing;
@@ -12,110 +14,119 @@ namespace Microsoft.AspNetCore.Builder
 {
     public static class MvcEndpointRouteBuilderExtensions
     {
-        public static IEndpointConventionBuilder MapApplication(
-            this IEndpointRouteBuilder routeBuilder)
+        // TODO: Make this support multiple frameworks
+        public static IEndpointConventionBuilder MapApplication(this IEndpointRouteBuilder routeBuilder)
         {
-            return MapActionDescriptors(routeBuilder, null);
-        }
-
-        public static IEndpointConventionBuilder MapAssembly<TContainingType>(
-            this IEndpointRouteBuilder routeBuilder)
-        {
-            return MapActionDescriptors(routeBuilder, typeof(TContainingType));
-        }
-
-        private static IEndpointConventionBuilder MapActionDescriptors(
-            this IEndpointRouteBuilder routeBuilder,
-            Type containingType)
-        {
-            var mvcEndpointDataSource = routeBuilder.DataSources.OfType<MvcEndpointDataSource>().FirstOrDefault();
-
-            if (mvcEndpointDataSource == null)
+            if (routeBuilder == null)
             {
-                mvcEndpointDataSource = routeBuilder.ServiceProvider.GetRequiredService<MvcEndpointDataSource>();
-                routeBuilder.DataSources.Add(mvcEndpointDataSource);
+                throw new ArgumentNullException(nameof(routeBuilder));
+            }
+            
+            var dataSource = GetOrCreateDataSource(routeBuilder);
+            return dataSource.AddApplicationAssemblies();
+        }
+
+        // TODO: Make this support multiple frameworks
+        public static IEndpointConventionBuilder MapAssembly<TContainingType>(this IEndpointRouteBuilder routeBuilder)
+        {
+            if (routeBuilder == null)
+            {
+                throw new ArgumentNullException(nameof(routeBuilder));
             }
 
-            var conventionBuilder = new DefaultEndpointConventionBuilder();
+            var dataSource = GetOrCreateDataSource(routeBuilder);
+            return dataSource.AddAssembly(typeof(TContainingType).Assembly);
+        }
 
-            var assemblyFilter = containingType?.Assembly;
-
-            mvcEndpointDataSource.AttributeRoutingConventionResolvers.Add(actionDescriptor =>
+        // TODO: Make this support multiple frameworks
+        public static IEndpointConventionBuilder MapAssembly(this IEndpointRouteBuilder routeBuilder, Type containingType)
+        {
+            if (routeBuilder == null)
             {
-                // Filter a descriptor by the assembly
-                // Note that this will only filter actions on controllers
-                // Does not support filtering Razor pages embedded in assemblies
-                if (assemblyFilter != null)
-                {
-                    if (actionDescriptor is ControllerActionDescriptor controllerActionDescriptor)
-                    {
-                        if (controllerActionDescriptor.ControllerTypeInfo.Assembly != assemblyFilter)
-                        {
-                            return null;
-                        }
-                    }
-                }
-
-                return conventionBuilder;
-            });
-
-            return conventionBuilder;
-        }
-
-        public static IEndpointConventionBuilder MapControllerRoute(
-            this IEndpointRouteBuilder routeBuilder,
-            string name,
-            string template)
-        {
-            return MapControllerRoute(routeBuilder, name, template, defaults: null);
-        }
-
-        public static IEndpointConventionBuilder MapControllerRoute(
-            this IEndpointRouteBuilder routeBuilder,
-            string name,
-            string template,
-            object defaults)
-        {
-            return MapControllerRoute(routeBuilder, name, template, defaults, constraints: null);
-        }
-
-        public static IEndpointConventionBuilder MapControllerRoute(
-            this IEndpointRouteBuilder routeBuilder,
-            string name,
-            string template,
-            object defaults,
-            object constraints)
-        {
-            return MapControllerRoute(routeBuilder, name, template, defaults, constraints, dataTokens: null);
-        }
-
-        public static IEndpointConventionBuilder MapControllerRoute(
-            this IEndpointRouteBuilder routeBuilder,
-            string name,
-            string template,
-            object defaults,
-            object constraints,
-            object dataTokens)
-        {
-            var mvcEndpointDataSource = routeBuilder.DataSources.OfType<MvcEndpointDataSource>().FirstOrDefault();
-
-            if (mvcEndpointDataSource == null)
-            {
-                mvcEndpointDataSource = routeBuilder.ServiceProvider.GetRequiredService<MvcEndpointDataSource>();
-                routeBuilder.DataSources.Add(mvcEndpointDataSource);
+                throw new ArgumentNullException(nameof(routeBuilder));
             }
 
-            var endpointInfo = new MvcEndpointInfo(
-                name,
+            if (containingType == null)
+            {
+                throw new ArgumentNullException(nameof(containingType));
+            }
+
+            var dataSource = GetOrCreateDataSource(routeBuilder);
+            return dataSource.AddAssembly(containingType.Assembly);
+        }
+
+        // TODO: Make this support multiple frameworks
+        public static IEndpointConventionBuilder MapAssembly(this IEndpointRouteBuilder routeBuilder, Assembly assembly)
+        {
+            if (routeBuilder == null)
+            {
+                throw new ArgumentNullException(nameof(routeBuilder));
+            }
+
+            if (assembly == null)
+            {
+                throw new ArgumentNullException(nameof(assembly));
+            }
+
+            var dataSource = GetOrCreateDataSource(routeBuilder);
+            return dataSource.AddAssembly(assembly);
+        }
+
+        public static IEndpointConventionBuilder MapControllerType<TController>(this IEndpointRouteBuilder routeBuilder)
+        {
+            if (routeBuilder == null)
+            {
+                throw new ArgumentNullException(nameof(routeBuilder));
+            }
+
+            var dataSource = GetOrCreateDataSource(routeBuilder);
+            return dataSource.AddType(typeof(TController));
+        }
+
+        public static IEndpointConventionBuilder MapControllerType(this IEndpointRouteBuilder routeBuilder, Type controllerType)
+        {
+            if (routeBuilder == null)
+            {
+                throw new ArgumentNullException(nameof(routeBuilder));
+            }
+
+            if (controllerType == null)
+            {
+                throw new ArgumentNullException(nameof(controllerType));
+            }
+
+            var dataSource = GetOrCreateDataSource(routeBuilder);
+            return dataSource.AddType(controllerType);
+        }
+
+        public static void MapControllerRoute(
+            this IEndpointRouteBuilder routeBuilder,
+            string name,
+            string template,
+            object defaults = null,
+            object constraints = null,
+            object dataTokens = null)
+        {
+            var dataSource = GetOrCreateDataSource(routeBuilder);
+            dataSource.AddConventionalRoute(new ConventionalRouteEntry(
+                name, 
                 template,
                 new RouteValueDictionary(defaults),
                 new RouteValueDictionary(constraints),
                 new RouteValueDictionary(dataTokens),
-                routeBuilder.ServiceProvider.GetRequiredService<ParameterPolicyFactory>());
+                dataSource.NextConventionalRouteOrder));
+        }
 
-            mvcEndpointDataSource.ConventionalEndpointInfos.Add(endpointInfo);
+        private static ControllerEndpointDataSource GetOrCreateDataSource(IEndpointRouteBuilder builder)
+        {
+            var controllerDataSource = builder.DataSources.OfType<ControllerEndpointDataSource>().SingleOrDefault();
+            if (controllerDataSource == null)
+            {
+                controllerDataSource = builder.ServiceProvider.GetRequiredService<ControllerEndpointDataSource>();
+                builder.DataSources.Add(controllerDataSource);
+            }
 
-            return endpointInfo;
+            return controllerDataSource;
         }
     }
 }
